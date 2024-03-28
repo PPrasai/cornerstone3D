@@ -91,7 +91,7 @@ module.exports = {
   devServer: {
     hot: true,
     open: false,
-    port: ${process.env.CS3D_PORT || 3000},
+    port: ${process.env.CS3D_PORT || 4000},
     historyApiFallback: true,
     headers: {
       "Cross-Origin-Embedder-Policy": "require-corp",
