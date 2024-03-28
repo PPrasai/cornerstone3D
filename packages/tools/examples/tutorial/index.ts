@@ -6,27 +6,42 @@
 
 import {
   RenderingEngine,
-  Types,
   Enums,
   setVolumesForViewports,
   volumeLoader,
 } from '@cornerstonejs/core';
+
 import {
-  addTool,
-  BrushTool,
-  SegmentationDisplayTool,
-  BidirectionalTool,
   ToolGroupManager,
-  WindowLevelTool,
-  ZoomTool,
-  segmentation,
   Enums as csToolsEnums,
+  CrosshairsTool,
+  synchronizers,
+  addTool,
 } from '@cornerstonejs/tools';
+
 import {
   initDemo,
   createImageIdsAndCacheMetaData,
   setTitleAndDescription,
+  addManipulationBindings,
 } from '../../../../utils/demo/helpers';
+
+const { createSlabThicknessSynchronizer } = synchronizers;
+
+const { MouseBindings } = csToolsEnums;
+const { ViewportType } = Enums;
+
+// Define a unique id for the volume
+const volumeName = 'CT_VOLUME_ID'; // Id of the volume less loader prefix
+const volumeLoaderScheme = 'cornerstoneStreamingImageVolume'; // Loader id which defines which volume loader to use
+const volumeId = `${volumeLoaderScheme}:${volumeName}`; // VolumeId with loader id + volume id
+const toolGroupId = 'MY_TOOLGROUP_ID';
+const viewportId1 = 'CT_AXIAL';
+const viewportId2 = 'CT_SAGITTAL';
+const viewportId3 = 'CT_CORONAL';
+const viewportIds = [viewportId1, viewportId2, viewportId3];
+const renderingEngineId = 'myRenderingEngine';
+const synchronizerId = 'SLAB_THICKNESS_SYNCHRONIZER_ID';
 
 // This is for debugging purposes
 console.warn(
@@ -36,17 +51,112 @@ console.warn(
 // ============================= //
 // ======== Set up page ======== //
 setTitleAndDescription(
-  'Tutorial Playground',
-  'The playground for you to copy paste the codes in the tutorials and run it'
+  'CrossHair',
+  'Implementing CrossHair tool within MPR viewers'
 );
 
-const { ViewportType } = Enums;
+const size = '500px';
+const content = document.getElementById('content');
+const viewportGrid = document.createElement('div');
+
+viewportGrid.style.display = 'flex';
+viewportGrid.style.display = 'flex';
+viewportGrid.style.flexDirection = 'row';
+
+const element1 = document.createElement('div');
+const element2 = document.createElement('div');
+const element3 = document.createElement('div');
+element1.style.width = size;
+element1.style.height = size;
+element2.style.width = size;
+element2.style.height = size;
+element3.style.width = size;
+element3.style.height = size;
+
+// Disable right click context menu so we can have right click tools
+element1.oncontextmenu = (e) => e.preventDefault();
+element2.oncontextmenu = (e) => e.preventDefault();
+element3.oncontextmenu = (e) => e.preventDefault();
+
+viewportGrid.appendChild(element1);
+viewportGrid.appendChild(element2);
+viewportGrid.appendChild(element3);
+
+content.appendChild(viewportGrid);
+
+// ========================================//
+// ======== Set up reference lines ========//
+const viewportColors = {
+  [viewportId1]: 'rgb(200, 0, 0)',
+  [viewportId2]: 'rgb(200, 200, 0)',
+  [viewportId3]: 'rgb(0, 200, 0)',
+};
+
+let synchronizer;
+
+const viewportReferenceLineControllable = [
+  viewportId1,
+  viewportId2,
+  viewportId3,
+];
+
+const viewportReferenceLineDraggableRotatable = [
+  viewportId1,
+  viewportId2,
+  viewportId3,
+];
+
+const viewportReferenceLineSlabThicknessControlsOn = [
+  viewportId1,
+  viewportId2,
+  viewportId3,
+];
+
+function getReferenceLineColor(viewportId) {
+  return viewportColors[viewportId];
+}
+
+function getReferenceLineControllable(viewportId) {
+  const index = viewportReferenceLineControllable.indexOf(viewportId);
+  return index !== -1;
+}
+
+function getReferenceLineDraggableRotatable(viewportId) {
+  const index = viewportReferenceLineDraggableRotatable.indexOf(viewportId);
+  return index !== -1;
+}
+
+function getReferenceLineSlabThicknessControlsOn(viewportId) {
+  const index =
+    viewportReferenceLineSlabThicknessControlsOn.indexOf(viewportId);
+  return index !== -1;
+}
+
+// ========================================//
+// ======== Set up synchronizers ==========//
+function setUpSynchronizers() {
+  synchronizer = createSlabThicknessSynchronizer(synchronizerId);
+
+  // Add viewports to VOI synchronizers
+  [viewportId1, viewportId2, viewportId3].forEach((viewportId) => {
+    synchronizer.add({
+      renderingEngineId,
+      viewportId,
+    });
+  });
+  // Normally this would be left on, but here we are starting the demo in the
+  // default state, which is to not have a synchronizer enabled.
+  synchronizer.setEnabled(false);
+}
+
 /**
  * Runs the demo
  */
 async function run() {
   // Init Cornerstone and related libraries
   await initDemo();
+
+  addTool(CrosshairsTool);
 
   // Get Cornerstone imageIds and fetch metadata into RAM
   const imageIds = await createImageIdsAndCacheMetaData({
@@ -56,48 +166,12 @@ async function run() {
     wadoRsRoot: 'http://localhost:8043/dicom-web',
   });
 
-  const content = document.getElementById('content');
-
-  const viewportGrid = document.createElement('div');
-  viewportGrid.style.display = 'flex';
-  viewportGrid.style.flexDirection = 'row';
-
-  // element for axial view
-  const element1 = document.createElement('div');
-  element1.style.width = '500px';
-  element1.style.height = '500px';
-
-  // element for sagittal view
-  const element2 = document.createElement('div');
-  element2.style.width = '500px';
-  element2.style.height = '500px';
-
-  // element for coronal view
-  const element3 = document.createElement('div');
-  element3.style.width = '500px';
-  element3.style.height = '500px';
-
-  viewportGrid.appendChild(element1);
-  viewportGrid.appendChild(element2);
-  viewportGrid.appendChild(element3);
-
-  content.appendChild(viewportGrid);
-
-  const renderingEngineId = 'myRenderingEngine';
   const renderingEngine = new RenderingEngine(renderingEngineId);
-
-  // note we need to add the cornerstoneStreamingImageVolume: to
-  // use the streaming volume loader
-  const volumeId = 'cornerstoneStreamingImageVolume: myVolume';
 
   // Define a volume in memory
   const volume = await volumeLoader.createAndCacheVolume(volumeId, {
     imageIds,
   });
-
-  const viewportId1 = 'CT_AXIAL';
-  const viewportId2 = 'CT_SAGITTAL';
-  const viewportId3 = 'CT_CORONAL';
 
   const viewportInput = [
     {
@@ -137,8 +211,43 @@ async function run() {
     [viewportId1, viewportId2, viewportId3]
   );
 
+  // Define tool groups to add the segmentation display tool to
+  const toolGroup = ToolGroupManager.createToolGroup(toolGroupId);
+  addManipulationBindings(toolGroup);
+
+  // For the crosshairs to operate, the viewports must currently be
+  // added ahead of setting the tool active. This will be improved in the future.
+  toolGroup.addViewport(viewportId1, renderingEngineId);
+  toolGroup.addViewport(viewportId2, renderingEngineId);
+  toolGroup.addViewport(viewportId3, renderingEngineId);
+
+  // Manipulation Tools
+  // Add Crosshairs tool and configure it to link the three viewports
+  // These viewports could use different tool groups. See the PET-CT example
+  // for a more complicated used case.
+
+  const isMobile = window.matchMedia('(any-pointer:coarse)').matches;
+
+  toolGroup.addTool(CrosshairsTool.toolName, {
+    getReferenceLineColor,
+    getReferenceLineControllable,
+    getReferenceLineDraggableRotatable,
+    getReferenceLineSlabThicknessControlsOn,
+    mobile: {
+      enabled: isMobile,
+      opacity: 0.8,
+      handleRadius: 9,
+    },
+  });
+
+  toolGroup.setToolActive(CrosshairsTool.toolName, {
+    bindings: [{ mouseButton: MouseBindings.Primary }],
+  });
+
+  setUpSynchronizers();
+
   // Render the image
-  renderingEngine.renderViewports([viewportId1, viewportId2, viewportId3]);
+  renderingEngine.renderViewports(viewportIds);
 }
 
 run();
